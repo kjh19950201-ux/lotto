@@ -4,7 +4,39 @@ import random
 import itertools
 import os
 
-# 페이지 기본 설정
+# --- 🔐 비밀번호 인증 함수 먼저 정의 ---
+def check_password():
+    """비밀번호가 올바르면 True를 반환하고, 아니면 비밀번호 입력 폼을 띄움"""
+    def password_entered():
+        # st.secrets 설정이 되어있지 않거나 테스트 중일 때를 대비해 기본 비번 설정("1234")도 허용
+        saved_password = st.secrets["password"] if "password" in st.secrets else "1234"
+        if st.session_state["password"] == saved_password:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.set_page_config(page_title="로그인", page_icon="🔒", layout="centered")
+        st.title("🔒 지인 전용 스마트 로또")
+        st.text_input("접속 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("접속 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        st.error("😕 비밀번호가 틀렸습니다. 다시 입력해주세요.")
+        return False
+    else:
+        return True
+
+# 비밀번호가 틀렸거나 통과 못 했으면 여기서 프로그램 실행 중단
+if not check_password():
+    st.stop()
+
+# ==========================================
+# 🔓 로그인 성공 후 실행되는 본문 프로그램
+# ==========================================
+
+# 페이지 기본 설정 (로그인 성공 후 와이드 화면 적용)
 st.set_page_config(page_title="스마트 로또 번호 추천 프로그램", page_icon="🎰", layout="wide")
 st.title("🎰 데이터 영구 저장 및 스마트 로또 추천 프로그램")
 st.write("입력한 당첨 데이터가 파일에 영구 저장되며, 잘못 입력한 경우 수정 및 삭제가 가능합니다.")
@@ -125,7 +157,6 @@ def load_data():
             return df
         except:
             pass
-    # 파일이 없거나 읽기 실패 시 기본 샘플 데이터 반환
     initial_data = [
         {"회차": 1248, "n1": 16, "n2": 18, "n3": 27, "n4": 36, "n5": 38, "n6": 42, "bonus": 22},
         {"회차": 1247, "n1": 8, "n2": 14, "n3": 21, "n4": 22, "n5": 42, "n6": 45, "bonus": 24},
@@ -140,7 +171,6 @@ def load_data():
 def save_data(df):
     df.to_csv(DB_FILE, index=False, encoding='utf-8-sig')
 
-# 세션 상태에 데이터 로드
 if 'df_lotto' not in st.session_state:
     st.session_state.df_lotto = load_data()
 
@@ -176,20 +206,17 @@ with st.sidebar.form("new_draw_form"):
                 "n6": entered_nums[5], "bonus": new_bonus
             }])
             st.session_state.df_lotto = pd.concat([new_row, st.session_state.df_lotto], ignore_index=True)
-            # 회차 기준으로 내림차순 정렬 및 저장
             st.session_state.df_lotto = st.session_state.df_lotto.sort_values(by="회차", ascending=False).reset_index(drop=True)
             save_data(st.session_state.df_lotto)
             st.sidebar.success(f"🎉 {new_round}회차 데이터가 영구 저장되었습니다!")
             st.rerun()
 
-# 사이드바 설정: 잘못 입력한 회차 수정/삭제 기능
 st.sidebar.divider()
 st.sidebar.subheader("✏️ 데이터 수정 및 삭제")
 with st.sidebar.form("edit_delete_form"):
     existing_rounds = sorted(st.session_state.df_lotto['회차'].tolist(), reverse=True)
     selected_round = st.selectbox("관리할 회차 선택", existing_rounds)
     
-    # 선택한 회차의 기존 데이터 불러오기
     row_data = st.session_state.df_lotto[st.session_state.df_lotto['회차'] == selected_round].iloc[0]
     
     e_n1 = st.number_input("n1 수정", 1, 45, int(row_data['n1']))
@@ -225,7 +252,6 @@ st.sidebar.divider()
 st.sidebar.subheader("🍀 나의 행운의 번호 설정 (선택사항)")
 lucky_input = st.sidebar.text_input("최대 12개 입력 가능 (쉼표로 구분)", "")
 
-# --- 데이터 분석 및 통계 처리 ---
 past_info = {}
 system_excluded_details = []
 hot_nums = set()
@@ -281,7 +307,6 @@ try:
 except Exception as e:
     st.error(f"데이터 처리 오류: {e}")
 
-# 메인 화면 설정
 num_games = st.slider("🎲 추천받을 게임 수 선택", min_value=1, max_value=10, value=5)
 
 if st.button("🚀 로또 번호 추출하기"):
@@ -388,6 +413,5 @@ if st.button("🚀 로또 번호 추출하기"):
         formatted_combo = "  |  ".join(f"**{n:02d}**" for n in combo)
         st.markdown(f"**{i}게임:** {formatted_combo} &nbsp;&nbsp;&nbsp; <span style='color:gray; font-size:0.9em;'>(핫수 {h_in}개, 콜드수 {c_in}개)</span>", unsafe_allow_html=True)
 
-# 하단에 현재 영구 저장된 데이터 목록 확인 아코디언 제공
 with st.expander("📋 현재 저장된 역대 당첨 데이터 확인하기 (클릭하여 열기)"):
     st.dataframe(st.session_state.df_lotto, use_container_width=True)
